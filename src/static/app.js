@@ -3,6 +3,105 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const loginBtn = document.getElementById("login-btn");
+  const logoutBtn = document.getElementById("logout-btn");
+  const loginModal = document.getElementById("login-modal");
+  const loginForm = document.getElementById("login-form");
+  const closeModal = document.querySelector(".close");
+  const userInfo = document.getElementById("user-info");
+  const usernameDisplay = document.getElementById("username-display");
+  const loginError = document.getElementById("login-error");
+
+  // Authentication state
+  let isAuthenticated = false;
+  let currentUser = null;
+
+  // Check if user is already logged in (from sessionStorage)
+  const storedUser = sessionStorage.getItem("currentUser");
+  if (storedUser) {
+    isAuthenticated = true;
+    currentUser = storedUser;
+    updateAuthUI();
+  }
+
+  // Modal controls
+  loginBtn.addEventListener("click", () => {
+    loginModal.classList.remove("hidden");
+  });
+
+  closeModal.addEventListener("click", () => {
+    loginModal.classList.add("hidden");
+    loginError.classList.add("hidden");
+  });
+
+  window.addEventListener("click", (event) => {
+    if (event.target === loginModal) {
+      loginModal.classList.add("hidden");
+      loginError.classList.add("hidden");
+    }
+  });
+
+  // Login form handler
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    
+    const username = document.getElementById("login-username").value;
+    const password = document.getElementById("login-password").value;
+
+    try {
+      const response = await fetch("/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        isAuthenticated = true;
+        currentUser = result.username;
+        sessionStorage.setItem("currentUser", currentUser);
+        updateAuthUI();
+        loginModal.classList.add("hidden");
+        loginForm.reset();
+        loginError.classList.add("hidden");
+        
+        // Refresh activities to show/hide delete buttons
+        fetchActivities();
+      } else {
+        loginError.textContent = result.detail || "Invalid credentials";
+        loginError.classList.remove("hidden");
+      }
+    } catch (error) {
+      loginError.textContent = "Login failed. Please try again.";
+      loginError.classList.remove("hidden");
+      console.error("Error logging in:", error);
+    }
+  });
+
+  // Logout handler
+  logoutBtn.addEventListener("click", () => {
+    isAuthenticated = false;
+    currentUser = null;
+    sessionStorage.removeItem("currentUser");
+    updateAuthUI();
+    fetchActivities(); // Refresh to hide delete buttons
+  });
+
+  // Update authentication UI
+  function updateAuthUI() {
+    if (isAuthenticated) {
+      loginBtn.classList.add("hidden");
+      userInfo.classList.remove("hidden");
+      usernameDisplay.textContent = `👤 ${currentUser}`;
+    } else {
+      loginBtn.classList.remove("hidden");
+      userInfo.classList.add("hidden");
+      usernameDisplay.textContent = "";
+    }
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -30,7 +129,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${
+                        isAuthenticated
+                          ? `<button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button>`
+                          : ""
+                      }</li>`
                   )
                   .join("")}
               </ul>
@@ -67,8 +170,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Handle unregister functionality
+  // Handle unregister functionality (only for authenticated users)
   async function handleUnregister(event) {
+    if (!isAuthenticated) {
+      messageDiv.textContent = "You must be logged in as a teacher to remove students.";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      setTimeout(() => {
+        messageDiv.classList.add("hidden");
+      }, 5000);
+      return;
+    }
+
     const button = event.target;
     const activity = button.getAttribute("data-activity");
     const email = button.getAttribute("data-email");

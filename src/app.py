@@ -5,14 +5,34 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel
 import os
+import json
 from pathlib import Path
+import secrets
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
+
+security = HTTPBasic()
+
+# Load teacher credentials
+def load_teachers():
+    teachers_file = Path(__file__).parent / "teachers.json"
+    with open(teachers_file, 'r') as f:
+        data = json.load(f)
+        return {teacher['username']: teacher['password'] for teacher in data['teachers']}
+
+TEACHERS = load_teachers()
+
+# Pydantic model for login
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 # Mount the static files directory
 current_dir = Path(__file__).parent
@@ -81,6 +101,21 @@ activities = {
 @app.get("/")
 def root():
     return RedirectResponse(url="/static/index.html")
+
+
+@app.post("/login")
+def login(credentials: LoginRequest):
+    """Authenticate a teacher"""
+    username = credentials.username
+    password = credentials.password
+    
+    if username in TEACHERS and TEACHERS[username] == password:
+        return {"status": "success", "message": "Login successful", "username": username}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password"
+        )
 
 
 @app.get("/activities")
